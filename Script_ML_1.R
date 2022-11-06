@@ -123,13 +123,14 @@ vars_names<-names(vars)
 vars_names<-gsub("regressors", "", x=vars_names)
 vars_names<-vars_names[-1]
 
-regressors_predict_fwd<-as.matrix(peru_test[, grep("^d_*", vars_names)])
+regressors_predict_fwd<-as.matrix(peru_test[, vars_names])
 regressors_predict_fwd<-as.matrix(cbind(intercept, regressors_predict_fwd))
 
 y_hat_fwd<-regressors_predict_fwd%*%as.vector(coef_reg_1_fwd)
 
 dim(regressors_predict_fwd)
 dim(coef_reg_1_fwd)
+length(coef_reg_1_fwd)
 
-
+###Correct dimension issue
 
