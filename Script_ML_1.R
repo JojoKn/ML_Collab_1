@@ -1,12 +1,13 @@
 ###ML for Econ, Assignment 1###
 
+###Reproduction####
+
 #####Required packages####
 library(readr)
 library(stargazer)
 library(tidyr)
 library(tidyverse)
 library(leaps)
-
 
 #####Loading the data####
 peru <- read_csv("peru_for_ml_course.csv")
@@ -76,9 +77,9 @@ test_mse<-mean((peru_test$lnpercapitaconsumption - y_hat_test)^2, na.rm=TRUE)
 #Result: train MSE and test MSE are very close together.
 
 
-####Applying a machine learning technique of choice####
+###ML technique of choice####
 
-#Trash 1: Forward Model
+####Trash 1: Forward Model####
 
 reg_1_fwd<-regsubsets(lnpercapitaconsumption~regressors, data=peru_train, 
                       method="forward",
@@ -87,6 +88,8 @@ reg_1_fwd<-regsubsets(lnpercapitaconsumption~regressors, data=peru_train,
 summary_reg_1_fwd<-summary(reg_1_fwd)
 
 names(summary_reg_1_fwd)
+
+####Plotting different information criteria and searching for optimal model####
 
 par(mfrow=c(2,2))
 plot(summary_reg_1_fwd$rss, xlab="Number of Variables", ylab="RSS", type="l")
@@ -107,6 +110,8 @@ points(d, summary_reg_1_fwd$bic[d], col="red", cex=2, pch=20)
 
 dev.off()
 
+####Specific Plot according to book contained in package####
+
 par(mfrow=c(2,2))
 plot(reg_1_fwd, scale="r2")
 plot(reg_1_fwd, scale="adjr2")
@@ -114,23 +119,37 @@ plot(reg_1_fwd, scale="Cp")
 plot(reg_1_fwd, scale="bic")
 dev.off
 
-#Choosing model with minimum BIC
+####Choosing model with minimum BIC####
 coef_reg_1_fwd<-as.vector(coef(reg_1_fwd, d))
-colnames(coef_reg_1_fwd)
 
 vars<-summary_reg_1_fwd$which[d,]
+vars<-vars[vars==TRUE]
 vars_names<-names(vars)
 vars_names<-gsub("regressors", "", x=vars_names)
 vars_names<-vars_names[-1]
 
+####Building Predictor Matrix####
+
+#For training data
+regressors_fwd<-as.matrix(peru_train[, vars_names])
+regressors_fwd<-as.matrix(cbind(intercept[nrow(peru_train)], regressors_fwd))
+
+#For Test Data
 regressors_predict_fwd<-as.matrix(peru_test[, vars_names])
 regressors_predict_fwd<-as.matrix(cbind(intercept, regressors_predict_fwd))
 
-y_hat_fwd<-regressors_predict_fwd%*%as.vector(coef_reg_1_fwd)
+####Predicting the outcome variable####
 
-dim(regressors_predict_fwd)
-dim(coef_reg_1_fwd)
-length(coef_reg_1_fwd)
+y_hat_fwd<-regressors_fwd%*%as.vector(coef_reg_1_fwd)
+y_hat_test_fwd<-regressors_predict_fwd%*%as.vector(coef_reg_1_fwd)
 
-###Correct dimension issue
+####Calculating test MSE####
+
+train_mse_fwd<-mean((peru_train$lnpercapitaconsumption - y_hat_fwd)^2, na.rm=TRUE)
+test_mse_fwd<-mean((peru_test$lnpercapitaconsumption - y_hat_test_fwd)^2, na.rm=TRUE)
+
+#Absolutely marginal improvement over the previous test MSE and slightly worse train MSE.
+
+
+
 
