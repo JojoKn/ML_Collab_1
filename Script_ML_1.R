@@ -8,18 +8,24 @@ library(stargazer)
 library(tidyr)
 library(tidyverse)
 library(leaps)
+library(lubridate)
+library(xgboost)
+library(tree)
+library(rpart)
+library(rpart.plot)
 
 #####Loading the data####
 peru <- read_csv("peru_for_ml_course.csv")
+peru<-subset(peru, is.na(peru$lnpercapitaconsumption)==FALSE)
 View(peru)
 
 ####Random Split of the data####
 set.seed(12345)
 
-train<-sample(c(TRUE, FALSE), nrow(peru), replace=TRUE, prob = c(0.5, 0.5))
+train<-sample(c(TRUE, FALSE), nrow(peru), replace=TRUE, prob = c(0.8, 0.2))
 test<-!train
 
-#Check balanced?
+#Check ratio
 sum(train)
 sum(test)
 
@@ -77,9 +83,8 @@ test_mse<-mean((peru_test$lnpercapitaconsumption - y_hat_test)^2, na.rm=TRUE)
 #Result: train MSE and test MSE are very close together.
 
 
-###ML technique of choice####
 
-####Trash 1: Forward Model####
+###Trash 1: Forward Model####
 
 reg_1_fwd<-regsubsets(lnpercapitaconsumption~regressors, data=peru_train, 
                       method="forward",
@@ -117,11 +122,12 @@ plot(reg_1_fwd, scale="r2")
 plot(reg_1_fwd, scale="adjr2")
 plot(reg_1_fwd, scale="Cp")
 plot(reg_1_fwd, scale="bic")
-dev.off
+dev.off()
 
 ####Choosing model with minimum BIC####
 coef_reg_1_fwd<-as.vector(coef(reg_1_fwd, d))
 
+####Obtaining the relevant variables####
 vars<-summary_reg_1_fwd$which[d,]
 vars<-vars[vars==TRUE]
 vars_names<-names(vars)
@@ -132,7 +138,7 @@ vars_names<-vars_names[-1]
 
 #For training data
 regressors_fwd<-as.matrix(peru_train[, vars_names])
-regressors_fwd<-as.matrix(cbind(intercept[nrow(peru_train)], regressors_fwd))
+regressors_fwd<-as.matrix(cbind(rep(1,nrow(peru_train)), regressors_fwd))
 
 #For Test Data
 regressors_predict_fwd<-as.matrix(peru_test[, vars_names])
@@ -149,6 +155,30 @@ train_mse_fwd<-mean((peru_train$lnpercapitaconsumption - y_hat_fwd)^2, na.rm=TRU
 test_mse_fwd<-mean((peru_test$lnpercapitaconsumption - y_hat_test_fwd)^2, na.rm=TRUE)
 
 #Absolutely marginal improvement over the previous test MSE and slightly worse train MSE.
+
+###Trash 2: Growing a regression tree####
+
+train_y<-peru_train[,1]
+train_x<-peru_train[, grep("^d_*", colnames(peru))]
+train_data<-data.frame(train_y,train_x )
+
+test_y<-peru_test[,1]
+test_x<-peru_test[,grep("^d_*", colnames(peru))]
+test_data<-data.frame(test_y, test_x)
+
+tree1<-tree(lnpercapitaconsumption ~ ., data = train_data)
+summary(tree1)
+plot(tree1)
+text(tree1, pretty=0)
+
+tree1_predict<-predict(tree1, test_data)
+summary(tree1_predict)
+
+#try cv.tree()
+#prune.misclass()
+
+###Trash 2.5: Boosting the tree using xgBoost####
+
 
 
 
