@@ -13,6 +13,7 @@ library(xgboost)
 library(tree)
 library(rpart)
 library(rpart.plot)
+library(caret) #Das ist gut.
 
 #####Loading the data####
 peru <- read_csv("peru_for_ml_course.csv")
