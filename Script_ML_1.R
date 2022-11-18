@@ -175,11 +175,68 @@ text(tree1, pretty=0)
 tree1_predict<-predict(tree1, test_data)
 summary(tree1_predict)
 
-#try cv.tree()
-#prune.misclass()
+cv_tree1<-cv.tree(tree1, FUN=prune.tree, K=100)
+cv_tree1
+
+plot(cv_tree1$size, cv_tree1$dev, type="b")
+
+prune_tree1<-prune.tree(tree1, best=8)
+plot(prune_tree1)
+text(prune_tree1, pretty=0)
+
+hist(peru$lnpercapitaconsumption, freq=FALSE)
+#Predictions seem rather high. And using very little variables in tree
+
+prune_tree1_predict<-predict(prune_tree1, test_data)
+
+mean((test_data$lnpercapitaconsumption-prune_tree1_predict)^2)
+mean((test_data$lnpercapitaconsumption-tree1_predict)^2)
+#Not surprisingly, as CV lead to tree with same size as before, the MSE is still the same
+#However, significantly higher than in Linear Regression
 
 ###Trash 2.5: Boosting the tree using xgBoost####
 
+#define predictor and response variables in training set
+train_x = data.matrix(train_data[, -1])
+train_y = train_data[,1]
+
+#define predictor and response variables in testing set
+test_x = data.matrix(test_data[, -1])
+test_y = test_data[, 1]
+
+#define final training and testing sets
+xgb_train = xgb.DMatrix(data = train_x, label = train_y)
+xgb_test = xgb.DMatrix(data = test_x, label = test_y)
+
+#defining a watchlist
+watchlist = list(train=xgb_train, test=xgb_test)
+
+#fit XGBoost model and display training and testing data at each iteartion
+model = xgb.train(data = xgb_train, 
+                  max.depth = ncol(test_x), 
+                  watchlist=watchlist, 
+                  nrounds = 1000)
+
+#define final model
+model_xgboost = xgboost(data = xgb_train,  
+                        max.depth = ncol(test_x), 
+                        nrounds = 51, 
+                        verbose = 0)
+summary(model_xgboost)
+
+#use model to make predictions on test data
+pred_y = predict(model_xgboost, xgb_test)
+
+mean((test_data$lnpercapitaconsumption-pred_y)^2) #MSE
+min(model$evaluation_log$train_rmse)
+caret::RMSE(test_y, pred_y)
+#Poor performance on the test dataset?
+
+hist(pred_y, freq=FALSE)
+hist(test_y, freq = FALSE)
+#Distributions look very similar
+hist(prune_tree1_predict)
+#Pruning result histogram looks strange
 
 
 
