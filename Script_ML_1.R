@@ -13,8 +13,10 @@ library(xgboost)
 library(tree)
 library(rpart)
 library(rpart.plot)
-library(caret)#Das ist gut.
-library(DiagrammeR)
+library(caret) #Large package for regression and classification trees
+library(DiagrammeR) #Needed for plotting with xgBoost
+library(ParBayesianOptimization) #Parameter Tuning with xgBoost
+library(mlbench)
 
 #####Loading the data####
 peru <- read_csv("peru_for_ml_course.csv")
@@ -218,6 +220,10 @@ nrounds <- 1000 #Number of boosting iterations
 eta <-0.1 #Standard is 0.3; learning rate
 gamma<- 0 #Standard is 0; Minimum loss reduction required
 subsample <- 1 #Standard is 1; prevent overfitting by randomly sampling the from training
+min_child_weight <- 1 #Standard is 1; Minimum sum of instance weight (hessian) needed in a child
+lambda <- 1 #Standard is 1; L2 regularization term on weights
+alpha <- 0 #Standard is 0; L1 regularization term on weights.
+
 
 #fit XGBoost model and display training and testing data at each iteartion
 model = xgb.train(data = xgb_train, 
@@ -226,7 +232,8 @@ model = xgb.train(data = xgb_train,
                   nrounds = nrounds,
                   eta = eta,
                   gamma = gamma,
-                  subsample = subsample)
+                  subsample = subsample, 
+                  min_child_weight = min_child_weight)
 
 par(mfrow=c(1,2))
 plot(seq(1:nrounds), model$evaluation_log$train_rmse, type = "l")
@@ -249,12 +256,15 @@ model_xgboost = xgboost(data = xgb_train,
 summary(model_xgboost)
 
 #use model to make predictions on test data
-pred_y = predict(model_xgboost, xgb_test)
-pred_y_train = predict(model_xgboost, xgb_train)
+#pred_y = predict(model_xgboost, xgb_test)
+#pred_y_train = predict(model_xgboost, xgb_train)
+
+pred_y = predict(model, xgb_test)
+pred_y_train = predict(model, xgb_train)
 
 #MSE
+mean((train_data$lnpercapitaconsumption-pred_y_train)^2)
 mean((test_data$lnpercapitaconsumption-pred_y)^2)
-mean((train_data$lnpercapitaconsumption-pred_y_train)^2) #MSE
 
 min(model$evaluation_log$train_rmse)
 
@@ -271,10 +281,10 @@ hist(prune_tree1_predict)
 #Plot single tree out of the many iterations
 xgb.plot.tree(model=model_xgboost, trees=100)
 #Plot tree over all iterations including importance of the different variables
-xgb.plot.multi.trees(model=model_xgboost)
+xgb.plot.multi.trees(model=model)
 
 # get information on how important each feature is
-importance_matrix <- xgb.importance(model = model_xgboost)
+importance_matrix <- xgb.importance(model = model)
 
 # and plot it
 xgb.plot.importance(importance_matrix)
@@ -282,7 +292,106 @@ xgb.plot.importance(importance_matrix)
 
 #From the fitting procedure, the best performance on the test data set is reached with 
 #max.depth=2; everything else reduces greatly the MSE on the training set, but not on the 
-#test set.
-#Maybe use cross validation with the integrated function to tunde the model to have the
-#right parameters?
+#test set. From there:
+#Parameter Tuning with Bayesian Optimization?
+
+#https://www.r-bloggers.com/2022/01/using-bayesian-optimisation-to-tune-a-xgboost-model-in-r/
+
+obj_func <- function(eta, max_depth, min_child_weight, subsample, lambda, alpha) {
+  
+  param <- list(
+    
+    # Hyper parameters 
+    eta = eta,
+    max_depth = max_depth,
+    min_child_weight = min_child_weight,
+    subsample = subsample,
+    lambda = lambda,
+    alpha = alpha,
+    
+    # Tree model; default booster
+    booster = "gbtree",
+    
+    # Regression problem; default objective function
+    objective = "reg:squarederror",
+    
+    # Use RMSE
+    eval_metric = "rmse")
+  
+  xgbcv <- xgb.cv(params = param,
+                  data = xgb_train,
+                  nround = 100,
+                  nfold=10,
+                  prediction = TRUE,
+                  early_stopping_rounds = 5,
+                  verbose = 1,
+                  maximize = F)
+  
+  lst <- list(
+    
+    # First argument must be named as "Score"
+    # Function finds maxima so inverting the output
+    Score = -min(xgbcv$evaluation_log$test_rmse_mean),
+    
+    # Get number of trees for the best performing model
+    nrounds = xgbcv$best_iteration
+  )
+  
+  return(lst)
+}
+
+#Setting bounds
+
+bounds <- list(eta = c(0.001, 0.3),
+               max_depth = c(1L, 10L),
+               min_child_weight = c(1, 50),
+               subsample = c(0.1, 1),
+               lambda = c(1, 10),
+               alpha = c(0, 10))
+
+set.seed(1234)
+bayes_out <- bayesOpt(FUN = obj_func, 
+                      bounds = bounds, 
+                      initPoints = length(bounds) + 2, 
+                      iters.n = 3,
+                      verbose=2)
+# Show relevant columns from the summary object 
+bayes_out$scoreSummary[1:5, c(3:8, 13)]
+# Get best parameters
+data.frame(getBestPars(bayes_out))
+
+opt_params <- append(list(booster = "gbtree", 
+                          objective = "reg:squarederror", 
+                          eval_metric = "rmse"), 
+                     getBestPars(bayes_out))
+# Run cross validation 
+xgbcv <- xgb.cv(params = opt_params,
+                data = xgb_train,
+                nround = 100,
+                nfold=10,
+                prediction = TRUE,
+                early_stopping_rounds = 5,
+                verbose = 1,
+                maximize = F)
+# Get optimal number of rounds
+nrounds = xgbcv$best_iteration
+# Fit a xgb model
+model2 <- xgboost(data = xgb_train, 
+                  params = opt_params, 
+                  maximize = F, 
+                  early_stopping_rounds = 5, 
+                  nrounds = nrounds, 
+                  verbose = 1)
+
+pred_y_opt = predict(model2, xgb_test)
+pred_y_train_opt = predict(model2, xgb_train)
+
+mean((train_data$lnpercapitaconsumption-pred_y_train_opt)^2)
+mean((test_data$lnpercapitaconsumption-pred_y_opt)^2)
+#As a result, the Bayesian Parameter Tuning has indeed improved the predictions even further.
+
+#Documentation on Parameters to set with xgBoost: 
+# https://xgboost.readthedocs.io/en/latest/parameter.html
+
+
 
