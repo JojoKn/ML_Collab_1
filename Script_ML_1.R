@@ -13,7 +13,8 @@ library(xgboost)
 library(tree)
 library(rpart)
 library(rpart.plot)
-library(caret) #Das ist gut.
+library(caret)#Das ist gut.
+library(DiagrammeR)
 
 #####Loading the data####
 peru <- read_csv("peru_for_ml_course.csv")
@@ -211,33 +212,77 @@ xgb_test = xgb.DMatrix(data = test_x, label = test_y)
 #defining a watchlist
 watchlist = list(train=xgb_train, test=xgb_test)
 
+#Setting the tuning parameters:
+max.depth <- 2 #Maximum depth of each tree. Set to zero for no constraints
+nrounds <- 1000 #Number of boosting iterations
+eta <-0.1 #Standard is 0.3; learning rate
+gamma<- 0 #Standard is 0; Minimum loss reduction required
+subsample <- 1 #Standard is 1; prevent overfitting by randomly sampling the from training
+
 #fit XGBoost model and display training and testing data at each iteartion
 model = xgb.train(data = xgb_train, 
-                  max.depth = ncol(test_x), 
-                  watchlist=watchlist, 
-                  nrounds = 1000)
+                  max.depth = max.depth, 
+                  watchlist = watchlist, 
+                  nrounds = nrounds,
+                  eta = eta,
+                  gamma = gamma,
+                  subsample = subsample)
+
+par(mfrow=c(1,2))
+plot(seq(1:nrounds), model$evaluation_log$train_rmse, type = "l")
+plot(seq((nrounds/2):nrounds), model$evaluation_log$train_rmse[(nrounds/2):nrounds], type = "l")
+dev.off()
+
+
+par(mfrow=c(1,2))
+plot(seq(1:nrounds), model$evaluation_log$test_rmse, type = "l")
+plot(seq((nrounds/2):nrounds), model$evaluation_log$test_rmse[(nrounds/2):nrounds], type = "l")
+dev.off()
+
 
 #define final model
 model_xgboost = xgboost(data = xgb_train,  
-                        max.depth = ncol(test_x), 
-                        nrounds = 51, 
-                        verbose = 0)
+                        max.depth = 2, 
+                        nrounds = 1000, 
+                        verbose = 0,
+                        )
 summary(model_xgboost)
 
 #use model to make predictions on test data
 pred_y = predict(model_xgboost, xgb_test)
+pred_y_train = predict(model_xgboost, xgb_train)
 
-mean((test_data$lnpercapitaconsumption-pred_y)^2) #MSE
+#MSE
+mean((test_data$lnpercapitaconsumption-pred_y)^2)
+mean((train_data$lnpercapitaconsumption-pred_y_train)^2) #MSE
+
 min(model$evaluation_log$train_rmse)
-caret::RMSE(test_y, pred_y)
-#Poor performance on the test dataset?
 
+#Distribution
+par(mfrow=c(1,2))
 hist(pred_y, freq=FALSE)
 hist(test_y, freq = FALSE)
+dev.off()
 #Distributions look very similar
 hist(prune_tree1_predict)
 #Pruning result histogram looks strange
 
+#Diagnostic tools
+#Plot single tree out of the many iterations
+xgb.plot.tree(model=model_xgboost, trees=100)
+#Plot tree over all iterations including importance of the different variables
+xgb.plot.multi.trees(model=model_xgboost)
+
+# get information on how important each feature is
+importance_matrix <- xgb.importance(model = model_xgboost)
+
+# and plot it
+xgb.plot.importance(importance_matrix)
 
 
+#From the fitting procedure, the best performance on the test data set is reached with 
+#max.depth=2; everything else reduces greatly the MSE on the training set, but not on the 
+#test set.
+#Maybe use cross validation with the integrated function to tunde the model to have the
+#right parameters?
 
