@@ -19,8 +19,8 @@ library(ParBayesianOptimization) #Parameter Tuning with xgBoost
 library(mlbench)
 
 #####Loading the data####
-peru <- read_csv("peru_for_ml_course.csv")
-peru<-subset(peru, is.na(peru$lnpercapitaconsumption)==FALSE)
+peru_full <- read_csv("peru_for_ml_course.csv")
+peru<-subset(peru_full, is.na(peru$lnpercapitaconsumption)==FALSE)
 View(peru)
 
 ####Random Split of the data####
@@ -88,7 +88,7 @@ test_mse<-mean((peru_test$lnpercapitaconsumption - y_hat_test)^2, na.rm=TRUE)
 
 
 
-###Trash 1: Forward Model####
+###Idea 1: Forward Model####
 
 reg_1_fwd<-regsubsets(lnpercapitaconsumption~regressors, data=peru_train, 
                       method="forward",
@@ -160,7 +160,7 @@ test_mse_fwd<-mean((peru_test$lnpercapitaconsumption - y_hat_test_fwd)^2, na.rm=
 
 #Absolutely marginal improvement over the previous test MSE and slightly worse train MSE.
 
-###Trash 2: Growing a regression tree####
+###Idea 2: Growing a regression tree####
 
 train_y<-peru_train[,1]
 train_x<-peru_train[, grep("^d_*", colnames(peru))]
@@ -197,7 +197,7 @@ mean((test_data$lnpercapitaconsumption-tree1_predict)^2)
 #Not surprisingly, as CV lead to tree with same size as before, the MSE is still the same
 #However, significantly higher than in Linear Regression
 
-###Trash 2.5: Boosting the tree using xgBoost####
+###Idea 2.5: Boosting the tree using xgBoost####
 
 #define predictor and response variables in training set
 train_x = data.matrix(train_data[, -1])
@@ -394,5 +394,10 @@ mean((test_data$lnpercapitaconsumption-pred_y_opt)^2)
 #Documentation on Parameters to set with xgBoost: 
 # https://xgboost.readthedocs.io/en/latest/parameter.html
 
-
-
+#For putting in the numbers into the evaluation tool, these are the predictions on the
+#Out-of-sample data:
+oos<-data.matrix(peru_full[is.na(peru_full$lnpercapitaconsumption), grep("^d_*", colnames(peru_full))])
+xgb_oos<-xgb.DMatrix(data = oos)
+pred_y_oos = predict(model2, xgb_oos)
+View(pred_y_oos)
+write(pred_y_oos, "Prediction_xgboost.txt", ncolumns=1)
