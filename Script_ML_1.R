@@ -388,6 +388,7 @@ pred_y_train_opt = predict(model2, xgb_train)
 
 mean((train_data$lnpercapitaconsumption-pred_y_train_opt)^2)
 mean((test_data$lnpercapitaconsumption-pred_y_opt)^2)
+
 #As a result, the Bayesian Parameter Tuning has indeed improved the predictions even further.
 
 #Documentation on Parameters to set with xgBoost: 
