@@ -17,6 +17,8 @@ library(caret) #Large package for regression and classification trees
 library(DiagrammeR) #Needed for plotting with xgBoost
 library(ParBayesianOptimization) #Parameter Tuning with xgBoost
 library(mlbench)
+library(doParallel)
+
 
 #####Loading the data####
 peru_full <- read_csv("peru_for_ml_course.csv")
@@ -225,7 +227,7 @@ lambda <- 1 #Standard is 1; L2 regularization term on weights
 alpha <- 0 #Standard is 0; L1 regularization term on weights.
 
 
-#fit XGBoost model and display training and testing data at each iteartion
+#fit XGBoost model and display training and testing data at each iteration
 model = xgb.train(data = xgb_train, 
                   max.depth = max.depth, 
                   watchlist = watchlist, 
@@ -245,15 +247,6 @@ par(mfrow=c(1,2))
 plot(seq(1:nrounds), model$evaluation_log$test_rmse, type = "l")
 plot(seq((nrounds/2):nrounds), model$evaluation_log$test_rmse[(nrounds/2):nrounds], type = "l")
 dev.off()
-
-
-#define final model
-model_xgboost = xgboost(data = xgb_train,  
-                        max.depth = 2, 
-                        nrounds = 1000, 
-                        verbose = 0,
-                        )
-summary(model_xgboost)
 
 #use model to make predictions on test data
 #pred_y = predict(model_xgboost, xgb_test)
@@ -278,7 +271,7 @@ hist(prune_tree1_predict)
 #Pruning result histogram looks strange
 
 #Diagnostic tools
-#Plot single tree out of the many iterations
+#Plot single tree out of the many iterations (not very helpful)
 xgb.plot.tree(model=model_xgboost, trees=100)
 #Plot tree over all iterations including importance of the different variables
 xgb.plot.multi.trees(model=model)
@@ -299,9 +292,11 @@ xgb.plot.importance(importance_matrix)
 
 obj_func <- function(eta, max_depth, min_child_weight, subsample, lambda, alpha) {
   
+  xgb_train = xgb.DMatrix(data = train_x, label = train_y)
+  
   param <- list(
     
-    # Hyper parameters 
+    # Hyperparameters 
     eta = eta,
     max_depth = max_depth,
     min_child_weight = min_child_weight,
@@ -342,30 +337,47 @@ obj_func <- function(eta, max_depth, min_child_weight, subsample, lambda, alpha)
 
 #Setting bounds
 
-bounds <- list(eta = c(0.001, 0.3),
+bounds <- list(eta = c(0.0001, 0.3),
                max_depth = c(1L, 10L),
                min_child_weight = c(1, 50),
                subsample = c(0.1, 1),
                lambda = c(1, 10),
                alpha = c(0, 10))
 
+#Setting Seed for reproducibility
 set.seed(1234)
+
+#Initializing the process to run in parallel
+cl <- makeCluster(8)
+registerDoParallel(cl)
+clusterExport(cl,c("train_x", "train_y"))
+clusterEvalQ(cl,expr= {
+  library(xgboost)
+})
+
+
+#Bayesian Optimzation. Plot gives back the progress of the optimization. If lower plot (utility)
+#is approaching zero, one can be optimistic that optimal parameter values were identified
+#(see the instructions manual for bayesOpt)
 bayes_out <- bayesOpt(FUN = obj_func, 
                       bounds = bounds, 
                       initPoints = length(bounds) + 2, 
-                      iters.n = 3,
-                      verbose=2)
+                      iters.n = 30,
+                      verbose=2,
+                      plotProgress = TRUE,
+                      parallel = TRUE)
+
 # Show relevant columns from the summary object 
 bayes_out$scoreSummary[1:5, c(3:8, 13)]
 # Get best parameters
 data.frame(getBestPars(bayes_out))
 
-opt_params <- append(list(booster = "gbtree", 
+opt_params2 <- append(list(booster = "gbtree", 
                           objective = "reg:squarederror", 
                           eval_metric = "rmse"), 
                      getBestPars(bayes_out))
 # Run cross validation 
-xgbcv <- xgb.cv(params = opt_params,
+xgbcv2 <- xgb.cv(params = opt_params,
                 data = xgb_train,
                 nround = 100,
                 nfold=10,
@@ -374,13 +386,13 @@ xgbcv <- xgb.cv(params = opt_params,
                 verbose = 1,
                 maximize = F)
 # Get optimal number of rounds
-nrounds = xgbcv$best_iteration
+nrounds2 = xgbcv2$best_iteration
 # Fit a xgb model
 model2 <- xgboost(data = xgb_train, 
                   params = opt_params, 
                   maximize = F, 
                   early_stopping_rounds = 5, 
-                  nrounds = nrounds, 
+                  nrounds = nrounds2, 
                   verbose = 1)
 
 pred_y_opt = predict(model2, xgb_test)
