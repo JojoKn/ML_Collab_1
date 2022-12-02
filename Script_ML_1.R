@@ -315,7 +315,7 @@ obj_func <- function(eta, max_depth, min_child_weight, subsample, lambda, alpha)
   
   xgbcv <- xgb.cv(params = param,
                   data = xgb_train,
-                  nround = 100,
+                  nround = 200,
                   nfold=10,
                   prediction = TRUE,
                   early_stopping_rounds = 5,
@@ -362,7 +362,7 @@ clusterEvalQ(cl,expr= {
 bayes_out <- bayesOpt(FUN = obj_func, 
                       bounds = bounds, 
                       initPoints = length(bounds) + 2, 
-                      iters.n = 30,
+                      iters.n = 60,
                       verbose=2,
                       plotProgress = TRUE,
                       parallel = TRUE)
