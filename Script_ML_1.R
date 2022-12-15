@@ -315,7 +315,7 @@ obj_func <- function(eta, max_depth, min_child_weight, subsample, lambda, alpha)
   
   xgbcv <- xgb.cv(params = param,
                   data = xgb_train,
-                  nround = 200,
+                  nround = 100,
                   nfold=10,
                   prediction = TRUE,
                   early_stopping_rounds = 5,
@@ -362,7 +362,7 @@ clusterEvalQ(cl,expr= {
 bayes_out <- bayesOpt(FUN = obj_func, 
                       bounds = bounds, 
                       initPoints = length(bounds) + 2, 
-                      iters.n = 60,
+                      iters.n = 30,
                       verbose=2,
                       plotProgress = TRUE,
                       parallel = TRUE)
@@ -393,7 +393,8 @@ model2 <- xgboost(data = xgb_train,
                   maximize = F, 
                   early_stopping_rounds = 5, 
                   nrounds = nrounds2, 
-                  verbose = 1)
+                  verbose = 1
+                  )
 
 pred_y_opt = predict(model2, xgb_test)
 pred_y_train_opt = predict(model2, xgb_train)
@@ -411,5 +412,11 @@ mean((test_data$lnpercapitaconsumption-pred_y_opt)^2)
 oos<-data.matrix(peru_full[is.na(peru_full$lnpercapitaconsumption), grep("^d_*", colnames(peru_full))])
 xgb_oos<-xgb.DMatrix(data = oos)
 pred_y_oos = predict(model2, xgb_oos)
-View(pred_y_oos)
 write(pred_y_oos, "Prediction_xgboost.txt", ncolumns=1)
+
+#Miscellaneous
+summary(is.na(peru_full))
+table(is.na(peru_full))
+
+importance_matrix = xgb.importance(colnames(xgb_train), model = model2)
+xgb.plot.importance(importance_matrix)
